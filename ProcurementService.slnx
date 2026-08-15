@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="ProcurementAiApi/ProcurementAiApi.csproj" />
+  <Project Path="ProcurementService.AppHost/ProcurementService.AppHost.csproj" />
+  <Project Path="ProcurementService.ServiceDefaults/ProcurementService.ServiceDefaults.csproj" />
+</Solution>

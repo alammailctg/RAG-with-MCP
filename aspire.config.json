@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "ProcurementService.AppHost/ProcurementService.AppHost.csproj"
+  }
+}
