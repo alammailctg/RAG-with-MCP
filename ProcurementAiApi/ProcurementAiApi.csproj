@@ -26,9 +26,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="LocalRAG\DTO\" />
-    <Folder Include="LocalRAG\Interfaces\" />
-    <Folder Include="LocalRAG\Services\" />
+    <Folder Include="LocalRAG.Application\Services\" />
+    <Folder Include="LocalRAG.Infrastructure\Vectors\" />
   </ItemGroup>
 
 </Project>

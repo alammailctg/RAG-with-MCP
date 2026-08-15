@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
-namespace ProcurementAiApi.Persistance
+namespace ProcurementAiApi.LocalRAG.Infrastructure.Persistance
 {
     public class RagDbContext : DbContext
     {

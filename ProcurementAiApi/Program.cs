@@ -1,6 +1,8 @@
 
 using Microsoft.EntityFrameworkCore;
-using ProcurementAiApi.Persistance;
+using ProcurementAiApi.LocalRAG.Application.Interfaces;
+using ProcurementAiApi.LocalRAG.Infrastructure.Ollamas;
+using ProcurementAiApi.LocalRAG.Infrastructure.Persistance;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,11 +12,13 @@ builder.Services.AddControllers();
 
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<RagDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("RagDb")));
+builder.Services.AddHttpClient<IEmbeddingService, OllamaEmbeddingService>(client => { client.BaseAddress = new Uri("http://localhost:11434"); });
+builder.Services.AddHttpClient<ILlmService, OllamaLlmService>(client => { client.BaseAddress = new Uri("http://localhost:11434"); });
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
 
-// Configure the HTTP request pipeline.
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
