@@ -1,6 +1,4 @@
-﻿using ProcurementAiApi.LocalRAG.Application.DTO;
-using ProcurementAiApi.LocalRAG.Application.Interfaces;
-
+﻿
 namespace ProcurementAiApi.LocalRAG.Infrastructure.Ollamas
 {
     public class OllamaEmbeddingService : IEmbeddingService

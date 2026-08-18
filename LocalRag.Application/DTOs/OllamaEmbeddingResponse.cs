@@ -1,4 +1,4 @@
-﻿namespace ProcurementAiApi.LocalRAG.Application.DTO
+﻿namespace ProcurementAiApi.LocalRAG.Application.DTOs
 {
     public class OllamaEmbeddingResponse
     {

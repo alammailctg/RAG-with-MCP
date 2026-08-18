@@ -25,9 +25,4 @@
     <ProjectReference Include="..\ProcurementService.ServiceDefaults\ProcurementService.ServiceDefaults.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="LocalRAG.Application\Services\" />
-    <Folder Include="LocalRAG.Infrastructure\Vectors\" />
-  </ItemGroup>
-
 </Project>

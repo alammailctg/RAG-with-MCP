@@ -1,5 +1,8 @@
-﻿using ProcurementAiApi.LocalRAG.Application.DTO;
+﻿
+
+using ProcurementAiApi.LocalRAG.Application.DTOs;
 using ProcurementAiApi.LocalRAG.Application.Interfaces;
+using System.Net.Http.Json;
 
 namespace ProcurementAiApi.LocalRAG.Infrastructure.Ollamas
 {
