@@ -1,20 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Numerics;
 using System.Text;
-using Pgvector;
-namespace LocalRag.Domain.Model
+
+namespace LocalRag.Application.DTOs
 {
-    public class DocumentChunk
+    public class DocumentChunkDto
     {
         public long Id { get; set; }
         public string DocumentId { get; set; } = default!;
         public string? Title { get; set; }
         public string Content { get; set; } = default!;
         public double Distance { get; set; }
-        [Column(TypeName = "vector(768)")]
-        public Pgvector.Vector Embedding { get; set; } = default!;
-        public DateTime CreatedAt { get; set; }
     }
 }

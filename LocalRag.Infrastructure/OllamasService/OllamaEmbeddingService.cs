@@ -1,5 +1,8 @@
 ﻿
-namespace ProcurementAiApi.LocalRAG.Infrastructure.Ollamas
+using ProcurementAiApi.LocalRAG.Application.Interfaces;
+using System.Net.Http.Json;
+
+namespace ProcurementAiApi.LocalRAG.Infrastructure.OllamasService
 {
     public class OllamaEmbeddingService : IEmbeddingService
     {
@@ -22,7 +25,7 @@ namespace ProcurementAiApi.LocalRAG.Infrastructure.Ollamas
 
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>(cancellationToken: cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<Application.DTOs.OllamaEmbeddingResponse>(cancellationToken: cancellationToken);
 
             return result!.Embeddings[0];
         }
