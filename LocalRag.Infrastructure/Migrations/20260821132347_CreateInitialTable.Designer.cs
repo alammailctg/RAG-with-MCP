@@ -13,7 +13,7 @@ using Pgvector;
 namespace LocalRag.Infrastructure.Migrations
 {
     [DbContext(typeof(LocalRagDbContext))]
-    [Migration("20260819022059_CreateInitialTable")]
+    [Migration("20260821132347_CreateInitialTable")]
     partial class CreateInitialTable
     {
         /// <inheritdoc />
@@ -43,22 +43,26 @@ namespace LocalRag.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<double>("Distance")
-                        .HasColumnType("double precision");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0);
 
                     b.Property<string>("DocumentId")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<Vector>("Embedding")
                         .IsRequired()
                         .HasColumnType("vector(768)");
 
                     b.Property<string>("Title")
-                        .HasColumnType("text");
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("DocumentChunks");
+                    b.ToTable("DocumentChunks", (string)null);
                 });
 #pragma warning restore 612, 618
         }

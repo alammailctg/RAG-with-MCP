@@ -22,10 +22,10 @@ namespace LocalRag.Infrastructure.Migrations
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    DocumentId = table.Column<string>(type: "text", nullable: false),
-                    Title = table.Column<string>(type: "text", nullable: true),
+                    DocumentId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Title = table.Column<string>(type: "character varying(250)", maxLength: 250, nullable: true),
                     Content = table.Column<string>(type: "text", nullable: false),
-                    Distance = table.Column<double>(type: "double precision", nullable: false),
+                    Distance = table.Column<double>(type: "double precision", nullable: false, defaultValue: 0.0),
                     Embedding = table.Column<Vector>(type: "vector(768)", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },

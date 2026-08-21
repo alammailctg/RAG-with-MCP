@@ -1,10 +1,8 @@
 ﻿using LocalRag.Application.DTOs;
 using LocalRag.Application.Features.Queries;
+using LocalRag.Domain.RepositoryInterfaces;
 using MediatR;
 using ProcurementAiApi.LocalRAG.Application.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LocalRag.Application.Features.QueryHandlers
 {
@@ -14,13 +12,15 @@ namespace LocalRag.Application.Features.QueryHandlers
         private readonly IVectorRepository _vectorRepository;
         private readonly ILlmService _llmService;
 
-        public AskRagQueryHandler(IEmbeddingService embeddingService, IVectorRepository vectorRepository, ILlmService llmService)
+        public AskRagQueryHandler(
+            IEmbeddingService embeddingService,
+            IVectorRepository vectorRepository,
+            ILlmService llmService)
         {
             _embeddingService = embeddingService;
             _vectorRepository = vectorRepository;
             _llmService = llmService;
         }
-
         public async Task<RagAnswerDto> Handle(AskRagQuery request, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(request.Question))

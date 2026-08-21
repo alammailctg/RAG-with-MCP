@@ -2,5 +2,5 @@
   <Project Path="LocalRag.Application/LocalRag.Application.csproj" Id="edcafada-2b2d-400d-80d9-99108c8c2574" />
   <Project Path="LocalRag.Domain/LocalRag.Domain.csproj" Id="7560fe96-055e-46bb-b06e-b1110d7f6817" />
   <Project Path="LocalRag.Infrastructure/LocalRag.Infrastructure.csproj" Id="36c1bea0-7a12-433a-a25e-2013de131867" />
-  <Project Path="ProcurementAiApi/ProcurementAiApi.csproj" />
+  <Project Path="LocalRagApi/LocalRagApi.csproj" Id="88bff216-ed29-4146-a5f3-a6f568fda92e" />
 </Solution>

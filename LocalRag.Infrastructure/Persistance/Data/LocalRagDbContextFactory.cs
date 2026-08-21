@@ -1,13 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LocalRag.Infrastructure.Persistance.Data
 {
     public class ProcurementDbContextFactory
-         : IDesignTimeDbContextFactory<LocalRagDbContext>
+        : IDesignTimeDbContextFactory<LocalRagDbContext>
     {
         public LocalRagDbContext CreateDbContext(string[] args)
         {

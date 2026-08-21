@@ -18,6 +18,7 @@ namespace LocalRag.Infrastructure
 
             services.AddScoped<IVectorRepository, VectorRepository>();
 
+
             return services;
         }
     }

@@ -1,4 +1,5 @@
 ﻿using LocalRag.Domain.Model;
+using LocalRag.Domain.RepositoryInterfaces;
 using MediatR;
 using Pgvector;
 using ProcurementAiApi.LocalRAG.Application.Interfaces;
