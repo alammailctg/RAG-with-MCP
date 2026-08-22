@@ -15,7 +15,11 @@ builder.Services.AddControllers();
 builder.Services.AddDbContext<LocalRagDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("RagDb"),
-        npgsql => npgsql.UseVector()));
+        npgsql =>
+        {
+            npgsql.UseVector();
+            npgsql.CommandTimeout(60);
+        }));
 
 //AI Part
 builder.Services.AddScoped<LocalRag.Domain.RepositoryInterfaces.IVectorRepository, VectorRepository>();

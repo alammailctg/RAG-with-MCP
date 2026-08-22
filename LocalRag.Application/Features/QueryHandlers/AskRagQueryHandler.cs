@@ -12,15 +12,13 @@ namespace LocalRag.Application.Features.QueryHandlers
         private readonly IVectorRepository _vectorRepository;
         private readonly ILlmService _llmService;
 
-        public AskRagQueryHandler(
-            IEmbeddingService embeddingService,
-            IVectorRepository vectorRepository,
-            ILlmService llmService)
+        public AskRagQueryHandler(IEmbeddingService embeddingService, IVectorRepository vectorRepository, ILlmService llmService)
         {
             _embeddingService = embeddingService;
             _vectorRepository = vectorRepository;
             _llmService = llmService;
         }
+
         public async Task<RagAnswerDto> Handle(AskRagQuery request, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(request.Question))
@@ -35,7 +33,7 @@ namespace LocalRag.Application.Features.QueryHandlers
                 return new RagAnswerDto
                 {
                     Question = request.Question,
-                    Answer = "No relevant information was found.",
+                    Answer = "The information was not found in the provided documents.",
                     Sources = []
                 };
             }
@@ -43,19 +41,27 @@ namespace LocalRag.Application.Features.QueryHandlers
             var context = string.Join("\n\n---\n\n", chunks.Select(x => $"Title: {x.Title}\nContent: {x.Content}"));
 
             var prompt = $"""
-            You are a RAG assistant.
+            You are a procurement RAG assistant.
 
-            Answer the question using only the provided context.
+            Answer the user's question using ONLY the information provided in the CONTEXT.
 
-            If the answer is not available in the context, say that the information was not found.
+            Rules:
+            - Do not use outside knowledge.
+            - Do not make assumptions.
+            - Do not invent or add information.
+            - Do not explain your reasoning.
+            - Do not mention the prompt, context, RAG, or these rules.
+            - Give a concise and direct answer.
+            - If the answer is not available in the CONTEXT, respond exactly:
+              "The information was not found in the provided documents."
 
-            Context:
+            CONTEXT:
             {context}
 
-            Question:
+            QUESTION:
             {request.Question}
 
-            Answer:
+            ANSWER:
             """;
 
             var answer = await _llmService.GenerateAsync(prompt, cancellationToken);
@@ -63,7 +69,7 @@ namespace LocalRag.Application.Features.QueryHandlers
             return new RagAnswerDto
             {
                 Question = request.Question,
-                Answer = answer,
+                Answer = answer.Trim(),
                 Sources = chunks.Select(x => new DocumentChunkDto
                 {
                     Id = x.Id,

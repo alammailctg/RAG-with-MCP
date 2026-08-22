@@ -21,9 +21,14 @@ namespace ProcurementAiApi.LocalRAG.Infrastructure.Ollamas
             {
                 model = "qwen3:4b",
                 prompt,
-                stream = false
+                stream = false,
+                think = false,
+                options = new
+                {
+                    temperature = 0.2,
+                    num_predict = 512
+                }
             };
-
             var response = await _httpClient.PostAsJsonAsync("/api/generate", request, cancellationToken);
 
             response.EnsureSuccessStatusCode();
