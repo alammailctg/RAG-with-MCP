@@ -1,6 +1,8 @@
 ﻿using AutoMapper;
+using LocalRag.Application.ServiceInterface;
 using LocalRag.Domain.RepositoryInterfaces;
 using LocalRag.Infrastructure.Repositories;
+using LocalRag.Infrastructure.ServiceImplementation;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
@@ -17,7 +19,7 @@ namespace LocalRag.Infrastructure
                 typeof(DependencyInjection).Assembly);
 
             services.AddScoped<IVectorRepository, VectorRepository>();
-
+            services.AddScoped<IDatabaseQueryService,DatabaseQueryService>();
 
             return services;
         }
