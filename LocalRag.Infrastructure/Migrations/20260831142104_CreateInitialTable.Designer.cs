@@ -13,7 +13,7 @@ using Pgvector;
 namespace LocalRag.Infrastructure.Migrations
 {
     [DbContext(typeof(LocalRagDbContext))]
-    [Migration("20260821132347_CreateInitialTable")]
+    [Migration("20260831142104_CreateInitialTable")]
     partial class CreateInitialTable
     {
         /// <inheritdoc />
