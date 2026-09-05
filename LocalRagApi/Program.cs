@@ -44,11 +44,7 @@ builder.Services.AddHttpClient<ILlmService, OllamaLlmService>(client =>
 
 builder.Services.AddInfrastructure();
 
-builder.Services
-    .AddMcpServer()
-    .WithHttpTransport()
-    .WithTools<DatabaseTools>()
-    .WithTools<VectorSearchTools>();
+ 
 
 builder.Services.AddMediatR(cfg =>
 {
@@ -57,16 +53,18 @@ builder.Services.AddMediatR(cfg =>
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAngular", builder =>
-        builder.WithOrigins("http://localhost:4200")
-               .AllowAnyHeader()
-               .AllowAnyMethod());
+    options.AddPolicy("Angular", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:4200")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
 });
 
-// app.UseCors("AllowAngular"); // app.MapMcp() এর উপরে বসাবেন
 
 var app = builder.Build();
-
+app.UseCors("Angular");
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
