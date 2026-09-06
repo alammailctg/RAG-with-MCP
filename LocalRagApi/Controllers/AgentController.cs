@@ -16,22 +16,32 @@ namespace LocalRagApi.Controllers
         }
 
         [HttpPost("ask")]
-        public async Task<IActionResult> Ask(
-            [FromBody] AgentRequest request,
-            CancellationToken cancellationToken)
+        public async Task<IActionResult> Ask([FromBody] AgentRequest request, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(request.Question))
                 return BadRequest("Question cannot be empty.");
 
-            var answer = await _agent.AskAsync(
-                request.Question,
-                cancellationToken);
-
-            return Ok(new
+            try
             {
-                Question = request.Question,
-                Answer = answer
-            });
+                var answer = await _agent.AskAsync(
+                    request.Question,
+                    cancellationToken);
+
+                return Ok(new
+                {
+                    Question = request.Question,
+                    Answer = answer
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    Message = ex.Message,
+                    InnerException = ex.InnerException?.Message,
+                    StackTrace = ex.StackTrace
+                });
+            }
         }
     }
 }
