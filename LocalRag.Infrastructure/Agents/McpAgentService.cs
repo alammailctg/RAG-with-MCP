@@ -88,9 +88,20 @@ public sealed class McpAgentService : IMcpAgentService
             contextBuilder.AppendLine();
         }
 
-        var finalAnswer = await _llm.GenerateAsync(BuildFinalPrompt(question, contextBuilder.ToString()), cancellationToken);
+       
+        var finalJson = await _llm.GenerateJsonAsync(
+            BuildFinalPrompt(question, contextBuilder.ToString()),
+            cancellationToken);
 
-        return CleanFinalAnswer(finalAnswer);
+        using var finalDocument = JsonDocument.Parse(finalJson);
+
+        if (!finalDocument.RootElement.TryGetProperty("answer", out var answerElement))
+            throw new InvalidOperationException("LLM final response does not contain 'answer'.");
+
+        return answerElement.GetString()?.Trim()
+               ?? "The requested information is not available.";
+ 
+
     }
 
     private static string BuildPlanningPrompt(string question)
@@ -174,99 +185,110 @@ User question:
 {{question}}
 """;
     }
+ 
 
     private async Task<string> GenerateSqlAsync(string question, CancellationToken cancellationToken)
     {
-        var prompt = """
-You are a PostgreSQL SQL generator.
+        var prompt = $$"""
+        You generate PostgreSQL SQL for a procurement database.
 
-Your ONLY task is to generate one SQL SELECT query.
+        Return ONLY valid JSON.
+        Do not return Markdown.
+        Do not return explanations.
+        Do not return reasoning.
 
-Database schema:
-
-TABLE: purchase_order
-COLUMNS:
-id
-po_number
-po_date
-supplier_id
-total_amount
-status
-
-TABLE: supplier
-COLUMNS:
-id
-name
-phone
-email
-
-RELATION:
-purchase_order.supplier_id = supplier.id
-
-Rules:
-1. Return ONLY the SQL query.
-2. The response MUST start with SELECT.
-3. Do NOT write explanations.
-4. Do NOT write steps.
-5. Do NOT write "Sure".
-6. Do NOT write "Here is the query".
-7. Do NOT use markdown.
-8. Do NOT use ```.
-9. Do NOT use INSERT.
-10. Do NOT use UPDATE.
-11. Do NOT use DELETE.
-12. Do NOT use DROP.
-13. Do NOT use ALTER.
-14. Do NOT use CREATE.
-15. Use only the tables and columns provided above.
-16. Return exactly one SELECT query.
-
-For the latest purchase order:
-ORDER BY po_date DESC
-LIMIT 1
-
-User question:
-""" + question;
-
-        var response = await _llm.GenerateAsync(prompt, cancellationToken);
-
-        Console.WriteLine("===== RAW SQL LLM RESPONSE =====");
-        Console.WriteLine(response);
-        Console.WriteLine("=================================");
-
-        if (string.IsNullOrWhiteSpace(response))
-            throw new InvalidOperationException("SQL generator returned an empty response.");
-
-        var sql = response.Trim();
-
-        var selectIndex = sql.IndexOf(
-            "SELECT",
-            StringComparison.OrdinalIgnoreCase);
-
-        if (selectIndex < 0)
+        Required JSON format:
         {
-            throw new InvalidOperationException(
-                $"LLM did not generate SQL. Raw response: {response}");
+          "sql": "SELECT ..."
         }
 
-        sql = sql[selectIndex..].Trim();
+        DATABASE SCHEMA:
 
-        var fenceIndex = sql.IndexOf("```");
+        TABLE: purchase_order
+        COLUMNS:
+        id
+        po_number
+        po_date
+        supplier_id
+        total_amount
+        status
 
-        if (fenceIndex >= 0)
-            sql = sql[..fenceIndex].Trim();
+        TABLE: supplier
+        COLUMNS:
+        id
+        name
+        phone
+        email
 
-        var semicolonIndex = sql.IndexOf(';');
+        RELATION:
+        purchase_order.supplier_id = supplier.id
 
-        if (semicolonIndex >= 0)
-            sql = sql[..(semicolonIndex + 1)];
+        RULES:
+        - sql must contain exactly one SELECT statement.
+        - sql must start with SELECT.
+        - Use only the tables and columns defined above.
+        - Never use INSERT.
+        - Never use UPDATE.
+        - Never use DELETE.
+        - Never use DROP.
+        - Never use ALTER.
+        - Never use CREATE.
+        - Do not include comments.
+        - Do not include explanations.
+        - Do not include reasoning.
 
-        sql = sql.Trim();
+        USER QUESTION:
+        {{question}}
+        """;
 
-        if (!sql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+        var response = await _llm.GenerateJsonAsync(prompt, cancellationToken);
+                Console.WriteLine("===== RAW SQL JSON RESPONSE =====");
+                Console.WriteLine(response);
+                Console.WriteLine("=================================");
+
+                if (string.IsNullOrWhiteSpace(response))
+                    throw new InvalidOperationException("SQL generator returned an empty response.");
+
+                using var document = JsonDocument.Parse(response);
+
+                if (!document.RootElement.TryGetProperty("sql", out var sqlElement))
+                    throw new InvalidOperationException("LLM response does not contain 'sql'.");
+
+                var sql = sqlElement.GetString()?.Trim();
+
+                if (string.IsNullOrWhiteSpace(sql))
+                    throw new InvalidOperationException("Generated SQL is empty.");
+
+                sql = sql.Replace("```sql", "", StringComparison.OrdinalIgnoreCase)
+                         .Replace("```", "", StringComparison.OrdinalIgnoreCase)
+                         .Trim();
+
+                var semicolonIndex = sql.IndexOf(';');
+
+                if (semicolonIndex >= 0)
+                    sql = sql[..semicolonIndex].Trim();
+
+                if (!sql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"Generated query is not SELECT: {sql}");
+
+                var forbiddenWords = new[]
+                {
+                "However",
+                "Sure",
+                "Let's",
+                "Let me",
+                "Here is",
+                "The query",
+                "Explanation:",
+                "Answer:",
+                "SELECT statement"
+            };
+
+        foreach (var word in forbiddenWords)
         {
-            throw new InvalidOperationException(
-                $"Generated query is not a SELECT query: {sql}");
+            if (sql.Contains(word, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"LLM generated invalid SQL containing natural language: {sql}");
         }
 
         Console.WriteLine("===== CLEAN SQL =====");
@@ -276,122 +298,80 @@ User question:
         return sql;
     }
 
-    private static string BuildFinalPrompt(string question, string toolContext)
-    {
-        return $$"""
-You are a Procurement ERP assistant.
 
-Answer the user's question using ONLY the information in TOOL RESULTS.
 
-Rules:
-- Output ONLY the final answer.
-- Do NOT output reasoning.
-- Do NOT analyze the question.
-- Do NOT say "Okay".
-- Do NOT say "The user is asking".
-- Do NOT say "I need to".
-- Do NOT say "First, I see".
-- Do NOT say "Let me check".
-- Do NOT say "Let's analyze".
-- Do NOT mention tools.
-- Do NOT mention SearchDocuments.
-- Do NOT mention ExecuteQuery.
-- Do NOT mention the planner.
-- Do NOT mention retrieval.
-- Do NOT mention distance.
-- Do NOT mention relevance scores.
-- Do NOT mention internal reasoning.
-- Do NOT invent information.
-- Do NOT make up numbers.
-- Use ONLY facts contained in TOOL RESULTS.
-- If information is unavailable, say: "The requested information is not available."
-- Keep the answer concise and professional.
-- For process or workflow questions, use a numbered list.
-- For database questions, clearly show the relevant values.
-- Return ONLY the final user-facing answer.
-
-USER QUESTION:
-
-{{question}}
-
-TOOL RESULTS:
-
-{{toolContext}}
-
-FINAL USER-FACING ANSWER:
-""";
-    }
+    private string BuildFinalPrompt(string question, string toolResults) { return $$""" You are the final answer generator for a procurement system. Return ONLY valid JSON in exactly this format: { "answer": "your concise answer" } STRICT RULES: - Do not output Markdown. - Do not output reasoning. - Do not explain your thought process. - Do not repeat the question. - Do not mention tools. - Do not mention "tool result". - Do not mention "context". - Do not use "However". - Do not use "Let's re-read". - Do not use "But note". - Do not speculate. - Do not invent information. - Use ONLY the information contained in the tool results. - Keep the answer concise and professional. - If the requested information is unavailable, answer exactly: "The requested information is not available." USER QUESTION: {{question}} TOOL RESULTS: {{toolResults}} """; }
 
     private static string CleanJson(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            throw new InvalidOperationException("Planner returned empty response.");
-
-        text = text.Trim();
-
-        if (text.StartsWith("```"))
-        {
-            var firstNewLine = text.IndexOf('\n');
-
-            if (firstNewLine >= 0)
-                text = text[(firstNewLine + 1)..];
-
-            var lastFence = text.LastIndexOf("```");
-
-            if (lastFence >= 0)
-                text = text[..lastFence];
-
-            text = text.Trim();
-        }
-
-        var start = text.IndexOf('{');
-        var end = text.LastIndexOf('}');
-
-        if (start < 0 || end < 0 || end <= start)
-            throw new InvalidOperationException($"Planner did not return valid JSON. Raw response: {text}");
-
-        return text[start..(end + 1)].Trim();
-    }
-
-    private static string CleanFinalAnswer(string answer)
-    {
-        if (string.IsNullOrWhiteSpace(answer))
-            return "I could not generate an answer.";
-
-        answer = answer.Trim();
-
-        var thinkStart = answer.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
-
-        while (thinkStart >= 0)
-        {
-            var thinkEnd = answer.IndexOf("</think>", thinkStart, StringComparison.OrdinalIgnoreCase);
-
-            if (thinkEnd < 0)
             {
-                answer = answer[..thinkStart];
-                break;
+                if (string.IsNullOrWhiteSpace(text))
+                    throw new InvalidOperationException("Planner returned empty response.");
+
+                text = text.Trim();
+
+                if (text.StartsWith("```"))
+                {
+                    var firstNewLine = text.IndexOf('\n');
+
+                    if (firstNewLine >= 0)
+                        text = text[(firstNewLine + 1)..];
+
+                    var lastFence = text.LastIndexOf("```");
+
+                    if (lastFence >= 0)
+                        text = text[..lastFence];
+
+                    text = text.Trim();
+                }
+
+                var start = text.IndexOf('{');
+                var end = text.LastIndexOf('}');
+
+                if (start < 0 || end < 0 || end <= start)
+                    throw new InvalidOperationException($"Planner did not return valid JSON. Raw response: {text}");
+
+                return text[start..(end + 1)].Trim();
             }
 
-            answer = answer.Remove(thinkStart, thinkEnd + "</think>".Length - thinkStart);
-            thinkStart = answer.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
+            private static string CleanFinalAnswer(string answer)
+            {
+                if (string.IsNullOrWhiteSpace(answer))
+                    return "I could not generate an answer.";
+
+                answer = answer.Trim();
+
+                var thinkStart = answer.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
+
+                while (thinkStart >= 0)
+                {
+                    var thinkEnd = answer.IndexOf("</think>", thinkStart, StringComparison.OrdinalIgnoreCase);
+
+                    if (thinkEnd < 0)
+                    {
+                        answer = answer[..thinkStart];
+                        break;
+                    }
+
+                    answer = answer.Remove(thinkStart, thinkEnd + "</think>".Length - thinkStart);
+                    thinkStart = answer.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
+                }
+
+                if (answer.StartsWith("```") && answer.EndsWith("```"))
+                {
+                    var firstNewLine = answer.IndexOf('\n');
+
+                    if (firstNewLine >= 0)
+                        answer = answer[(firstNewLine + 1)..];
+
+                    var lastFence = answer.LastIndexOf("```");
+
+                    if (lastFence >= 0)
+                        answer = answer[..lastFence];
+                }
+
+                return answer.Trim();
+            }
         }
-
-        if (answer.StartsWith("```") && answer.EndsWith("```"))
-        {
-            var firstNewLine = answer.IndexOf('\n');
-
-            if (firstNewLine >= 0)
-                answer = answer[(firstNewLine + 1)..];
-
-            var lastFence = answer.LastIndexOf("```");
-
-            if (lastFence >= 0)
-                answer = answer[..lastFence];
-        }
-
-        return answer.Trim();
-    }
-}
 
 public sealed class AgentPlan
 {

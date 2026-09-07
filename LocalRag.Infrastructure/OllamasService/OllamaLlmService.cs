@@ -14,9 +14,7 @@ public sealed class OllamaLlmService : ILlmService
         _httpClient = httpClient;
     }
 
-    public async Task<string> GenerateAsync(
-     string prompt,
-     CancellationToken cancellationToken = default)
+    public async Task<string> GenerateAsync (string prompt, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(prompt))
             throw new ArgumentException(
@@ -94,9 +92,7 @@ public sealed class OllamaLlmService : ILlmService
         return text.Trim();
     }
 
-    public async Task<string> GenerateJsonAsync(
-    string prompt,
-    CancellationToken cancellationToken = default)
+    public async Task<string> GenerateJsonAsync(string prompt, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(prompt))
             throw new ArgumentException(
