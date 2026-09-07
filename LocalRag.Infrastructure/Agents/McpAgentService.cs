@@ -2,138 +2,50 @@
 using LocalRag.Application.Interfaces;
 using LocalRag.Infrastructure.MCPServers;
 using ProcurementAiApi.LocalRAG.Application.Interfaces;
+using System.Text;
 using System.Text.Json;
 
 namespace LocalRag.Infrastructure.Agents;
 
-public class McpAgentService : IMcpAgentService
+public sealed class McpAgentService : IMcpAgentService
 {
     private readonly ILlmService _llm;
-    private readonly DatabaseTools _databaseTools;
     private readonly VectorSearchTools _vectorSearchTools;
+    private readonly DatabaseTools _databaseTools;
 
-    public McpAgentService(
-        ILlmService llm,
-        DatabaseTools databaseTools,
-        VectorSearchTools vectorSearchTools)
+    public McpAgentService(ILlmService llm, VectorSearchTools vectorSearchTools, DatabaseTools databaseTools)
     {
         _llm = llm;
-        _databaseTools = databaseTools;
         _vectorSearchTools = vectorSearchTools;
+        _databaseTools = databaseTools;
     }
 
-    public async Task<string> AskAsync(
-        string question,
-        CancellationToken cancellationToken = default)
+    public async Task<string> AskAsync(string question, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(question))
-            throw new ArgumentException(
-                "Question cannot be empty.",
-                nameof(question));
+            throw new ArgumentException("Question cannot be empty.", nameof(question));
 
-        var planningPrompt = $$"""
-You are an AI agent for a procurement ERP system.
+        var planningResult = await _llm.GenerateJsonAsync(BuildPlanningPrompt(question), cancellationToken);
 
-You have two available tools.
+        if (string.IsNullOrWhiteSpace(planningResult))
+            throw new InvalidOperationException("Planner returned an empty response.");
 
-TOOL 1: SearchDocuments
-
-Use SearchDocuments when the question requires:
-- procurement policies
-- procurement procedures
-- company rules
-- workflow information
-- approval processes
-- stored company knowledge
-- information contained in documents
-
-TOOL 2: ExecuteQuery
-
-Use ExecuteQuery when the question requires:
-- purchase orders
-- suppliers
-- materials
-- quantities
-- amounts
-- dates
-- counts
-- totals
-- live ERP database information
-
-Decide which tool or tools are required.
-
-Return ONLY valid JSON.
-Do not return markdown.
-Do not return explanations.
-Do not return reasoning.
-
-Required format:
-
-{
-  "useDocumentSearch": false,
-  "useDatabase": false,
-  "sql": null
-}
-
-Rules:
-- For company policy, procurement process, procedure, workflow, or company-rule questions, set useDocumentSearch to true.
-- For live ERP data questions, set useDatabase to true.
-- If both are required, set both to true.
-- If database is required, generate only a SELECT SQL query.
-- Never generate INSERT.
-- Never generate UPDATE.
-- Never generate DELETE.
-- Never generate DROP.
-- Never generate ALTER.
-- Never generate TRUNCATE.
-- Return JSON only.
-
-QUESTION:
-{{question}}
-""";
-
-        Console.WriteLine("========== PLANNER PROMPT ==========");
-        Console.WriteLine(planningPrompt);
-
-        var planningResult = await _llm.GenerateAsync(
-            planningPrompt,
-            cancellationToken);
-
-        Console.WriteLine("========== PLANNER RESULT ==========");
+        Console.WriteLine("===== PLANNER RAW RESPONSE =====");
         Console.WriteLine(planningResult);
+        Console.WriteLine("================================");
 
-        planningResult = CleanJson(planningResult);
-
-        AgentPlan? plan = null;
+        AgentPlan plan;
 
         try
         {
-            plan = JsonSerializer.Deserialize<AgentPlan>(
-                planningResult,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+            var cleanJson = CleanJson(planningResult);
+            plan = JsonSerializer.Deserialize<AgentPlan>(cleanJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidOperationException("Planner returned an empty plan.");
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
-            Console.WriteLine("========== PLANNER PARSE ERROR ==========");
-            Console.WriteLine(ex.Message);
+            throw new InvalidOperationException("Unable to parse planner response.", ex);
         }
-
-        if (plan == null)
-        {
-            plan = new AgentPlan
-            {
-                UseDocumentSearch = true,
-                UseDatabase = false
-            };
-        }
-
-        Console.WriteLine("========== PARSED PLAN ==========");
-        Console.WriteLine($"UseDocumentSearch: {plan.UseDocumentSearch}");
-        Console.WriteLine($"UseDatabase: {plan.UseDatabase}");
-        Console.WriteLine($"SQL: {plan.Sql}");
 
         var toolResults = new List<AgentToolResult>();
 
@@ -141,136 +53,354 @@ QUESTION:
         {
             try
             {
-                var documentResult =
-                    await _vectorSearchTools.SearchDocuments(question);
-
-                Console.WriteLine("========== DOCUMENT SEARCH RESULT ==========");
-                Console.WriteLine(documentResult);
-
-                toolResults.Add(new AgentToolResult
-                {
-                    Tool = "SearchDocuments",
-                    Result = documentResult
-                });
+                var result = await _vectorSearchTools.SearchDocuments(question);
+                toolResults.Add(new AgentToolResult { ToolName = "SearchDocuments", Result = result });
             }
             catch (Exception ex)
             {
-                Console.WriteLine("========== DOCUMENT SEARCH ERROR ==========");
-                Console.WriteLine(ex);
-
-                toolResults.Add(new AgentToolResult
-                {
-                    Tool = "SearchDocuments",
-                    Result = $"Error: {ex.Message}"
-                });
+                Console.WriteLine($"SearchDocuments failed: {ex.Message}");
+                toolResults.Add(new AgentToolResult { ToolName = "SearchDocuments", Result = "Document search was unavailable." });
             }
         }
 
-        if (plan.UseDatabase &&
-            !string.IsNullOrWhiteSpace(plan.Sql))
+        if (plan.UseDatabase)
         {
-            try
-            {
-                var databaseResult =
-                    await _databaseTools.ExecuteQuery(plan.Sql);
+            var sql = await GenerateSqlAsync(question, cancellationToken);
 
-                Console.WriteLine("========== DATABASE RESULT ==========");
-                Console.WriteLine(databaseResult);
+            Console.WriteLine("===== GENERATED SQL =====");
+            Console.WriteLine(sql);
+            Console.WriteLine("=========================");
 
-                toolResults.Add(new AgentToolResult
-                {
-                    Tool = "ExecuteQuery",
-                    Result = databaseResult
-                });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("========== DATABASE ERROR ==========");
-                Console.WriteLine(ex);
+            var result = await _databaseTools.ExecuteQuery(sql, cancellationToken);
 
-                toolResults.Add(new AgentToolResult
-                {
-                    Tool = "ExecuteQuery",
-                    Result = $"Error: {ex.Message}"
-                });
-            }
+            toolResults.Add(new AgentToolResult { ToolName = "ExecuteQuery", Result = result });
         }
 
         if (toolResults.Count == 0)
+            return "I could not find enough information to answer the question.";
+
+        var contextBuilder = new StringBuilder();
+
+        foreach (var toolResult in toolResults)
         {
-            return "I could not determine which data source is required.";
+            contextBuilder.AppendLine($"===== {toolResult.ToolName} =====");
+            contextBuilder.AppendLine(toolResult.Result);
+            contextBuilder.AppendLine();
         }
 
-        var toolContext = string.Join(
-            "\n\n====================\n\n",
-            toolResults.Select(x =>
-                $"TOOL: {x.Tool}\nRESULT:\n{x.Result}"));
+        var finalAnswer = await _llm.GenerateAsync(BuildFinalPrompt(question, contextBuilder.ToString()), cancellationToken);
 
-        var finalPrompt = $"""
-                You are a procurement ERP assistant.
+        return CleanFinalAnswer(finalAnswer);
+    }
 
-                Question:
-                {question}
+    private static string BuildPlanningPrompt(string question)
+    {
+        return $$"""
+You are a tool selection planner for a Procurement ERP assistant.
 
-                Available data:
-                {toolContext}
+Your ONLY job is to decide which tools are required.
 
-                Write the answer directly.
+Available tools:
 
-                Output ONLY the answer that should be shown to the user.
-                Never output reasoning.
-                Never output analysis.
-                Never mention the data source.
-                Never mention tools.
+1. SearchDocuments
+Use this for:
+- procurement policy
+- procurement procedure
+- company rules
+- approval rules
+- workflow
+- supplier terms and conditions
+- policy documents
+- stored company documents
 
-                Answer:
-                """;
+2. ExecuteQuery
+Use this for:
+- supplier information
+- purchase orders
+- purchase order amounts
+- quantities
+- totals
+- counts
+- dates
+- rankings
+- current ERP database information
+- transactional data
 
-        Console.WriteLine("========== FINAL PROMPT ==========");
-        Console.WriteLine(finalPrompt);
+Rules:
+- Do NOT answer the user's question.
+- Do NOT generate SQL.
+- Do NOT explain your decision.
+- Return ONLY valid JSON.
+- Do NOT use markdown.
+- Do NOT use ``` fences.
 
-        var finalAnswer = await _llm.GenerateAsync(
-            finalPrompt,
-            cancellationToken);
+Return exactly:
 
-        Console.WriteLine("========== FINAL ANSWER ==========");
-        Console.WriteLine(finalAnswer);
+{
+  "useDocumentSearch": false,
+  "useDatabase": false
+}
 
-        if (string.IsNullOrWhiteSpace(finalAnswer))
+Examples:
+
+Question:
+"What is our procurement process?"
+
+Answer:
+{
+  "useDocumentSearch": true,
+  "useDatabase": false
+}
+
+Question:
+"How much was our latest purchase order?"
+
+Answer:
+{
+  "useDocumentSearch": false,
+  "useDatabase": true
+}
+
+Question:
+"What is our procurement policy and how much was our latest PO?"
+
+Answer:
+{
+  "useDocumentSearch": true,
+  "useDatabase": true
+}
+
+User question:
+{{question}}
+""";
+    }
+
+    private async Task<string> GenerateSqlAsync(string question, CancellationToken cancellationToken)
+    {
+        var prompt = """
+You are a PostgreSQL SQL generator.
+
+Your ONLY task is to generate one SQL SELECT query.
+
+Database schema:
+
+TABLE: purchase_order
+COLUMNS:
+id
+po_number
+po_date
+supplier_id
+total_amount
+status
+
+TABLE: supplier
+COLUMNS:
+id
+name
+phone
+email
+
+RELATION:
+purchase_order.supplier_id = supplier.id
+
+Rules:
+1. Return ONLY the SQL query.
+2. The response MUST start with SELECT.
+3. Do NOT write explanations.
+4. Do NOT write steps.
+5. Do NOT write "Sure".
+6. Do NOT write "Here is the query".
+7. Do NOT use markdown.
+8. Do NOT use ```.
+9. Do NOT use INSERT.
+10. Do NOT use UPDATE.
+11. Do NOT use DELETE.
+12. Do NOT use DROP.
+13. Do NOT use ALTER.
+14. Do NOT use CREATE.
+15. Use only the tables and columns provided above.
+16. Return exactly one SELECT query.
+
+For the latest purchase order:
+ORDER BY po_date DESC
+LIMIT 1
+
+User question:
+""" + question;
+
+        var response = await _llm.GenerateAsync(prompt, cancellationToken);
+
+        Console.WriteLine("===== RAW SQL LLM RESPONSE =====");
+        Console.WriteLine(response);
+        Console.WriteLine("=================================");
+
+        if (string.IsNullOrWhiteSpace(response))
+            throw new InvalidOperationException("SQL generator returned an empty response.");
+
+        var sql = response.Trim();
+
+        var selectIndex = sql.IndexOf(
+            "SELECT",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (selectIndex < 0)
         {
-            return "No answer could be generated from the available data.";
+            throw new InvalidOperationException(
+                $"LLM did not generate SQL. Raw response: {response}");
         }
 
-        return finalAnswer.Trim();
+        sql = sql[selectIndex..].Trim();
+
+        var fenceIndex = sql.IndexOf("```");
+
+        if (fenceIndex >= 0)
+            sql = sql[..fenceIndex].Trim();
+
+        var semicolonIndex = sql.IndexOf(';');
+
+        if (semicolonIndex >= 0)
+            sql = sql[..(semicolonIndex + 1)];
+
+        sql = sql.Trim();
+
+        if (!sql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Generated query is not a SELECT query: {sql}");
+        }
+
+        Console.WriteLine("===== CLEAN SQL =====");
+        Console.WriteLine(sql);
+        Console.WriteLine("=====================");
+
+        return sql;
+    }
+
+    private static string BuildFinalPrompt(string question, string toolContext)
+    {
+        return $$"""
+You are a Procurement ERP assistant.
+
+Answer the user's question using ONLY the information in TOOL RESULTS.
+
+Rules:
+- Output ONLY the final answer.
+- Do NOT output reasoning.
+- Do NOT analyze the question.
+- Do NOT say "Okay".
+- Do NOT say "The user is asking".
+- Do NOT say "I need to".
+- Do NOT say "First, I see".
+- Do NOT say "Let me check".
+- Do NOT say "Let's analyze".
+- Do NOT mention tools.
+- Do NOT mention SearchDocuments.
+- Do NOT mention ExecuteQuery.
+- Do NOT mention the planner.
+- Do NOT mention retrieval.
+- Do NOT mention distance.
+- Do NOT mention relevance scores.
+- Do NOT mention internal reasoning.
+- Do NOT invent information.
+- Do NOT make up numbers.
+- Use ONLY facts contained in TOOL RESULTS.
+- If information is unavailable, say: "The requested information is not available."
+- Keep the answer concise and professional.
+- For process or workflow questions, use a numbered list.
+- For database questions, clearly show the relevant values.
+- Return ONLY the final user-facing answer.
+
+USER QUESTION:
+
+{{question}}
+
+TOOL RESULTS:
+
+{{toolContext}}
+
+FINAL USER-FACING ANSWER:
+""";
     }
 
     private static string CleanJson(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
-            return string.Empty;
+            throw new InvalidOperationException("Planner returned empty response.");
 
         text = text.Trim();
 
-        text = text
-            .Replace("```json", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("```", "")
-            .Trim();
+        if (text.StartsWith("```"))
+        {
+            var firstNewLine = text.IndexOf('\n');
+
+            if (firstNewLine >= 0)
+                text = text[(firstNewLine + 1)..];
+
+            var lastFence = text.LastIndexOf("```");
+
+            if (lastFence >= 0)
+                text = text[..lastFence];
+
+            text = text.Trim();
+        }
 
         var start = text.IndexOf('{');
         var end = text.LastIndexOf('}');
 
-        if (start >= 0 && end > start)
+        if (start < 0 || end < 0 || end <= start)
+            throw new InvalidOperationException($"Planner did not return valid JSON. Raw response: {text}");
+
+        return text[start..(end + 1)].Trim();
+    }
+
+    private static string CleanFinalAnswer(string answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer))
+            return "I could not generate an answer.";
+
+        answer = answer.Trim();
+
+        var thinkStart = answer.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
+
+        while (thinkStart >= 0)
         {
-            return text[start..(end + 1)];
+            var thinkEnd = answer.IndexOf("</think>", thinkStart, StringComparison.OrdinalIgnoreCase);
+
+            if (thinkEnd < 0)
+            {
+                answer = answer[..thinkStart];
+                break;
+            }
+
+            answer = answer.Remove(thinkStart, thinkEnd + "</think>".Length - thinkStart);
+            thinkStart = answer.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
         }
 
-        return text;
-    }
+        if (answer.StartsWith("```") && answer.EndsWith("```"))
+        {
+            var firstNewLine = answer.IndexOf('\n');
 
-    private class AgentPlan
-    {
-        public bool UseDocumentSearch { get; set; }
-        public bool UseDatabase { get; set; }
-        public string? Sql { get; set; }
+            if (firstNewLine >= 0)
+                answer = answer[(firstNewLine + 1)..];
+
+            var lastFence = answer.LastIndexOf("```");
+
+            if (lastFence >= 0)
+                answer = answer[..lastFence];
+        }
+
+        return answer.Trim();
     }
+}
+
+public sealed class AgentPlan
+{
+    public bool UseDocumentSearch { get; set; }
+    public bool UseDatabase { get; set; }
+}
+
+public sealed class AgentToolResult
+{
+    public string ToolName { get; set; } = string.Empty;
+    public string Result { get; set; } = string.Empty;
 }

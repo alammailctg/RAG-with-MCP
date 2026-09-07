@@ -8,8 +8,9 @@ using LocalRag.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using ProcurementAiApi.LocalRAG.Application.Interfaces;
 using ProcurementAiApi.LocalRAG.Infrastructure.Ollamas;
-using ProcurementAiApi.LocalRAG.Infrastructure.OllamasService;
+
 using ModelContextProtocol.AspNetCore;
+using LocalRag.Infrastructure.OllamasService;
 
 var builder = WebApplication.CreateBuilder(args);
 

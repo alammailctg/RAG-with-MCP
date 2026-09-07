@@ -15,7 +15,7 @@ namespace LocalRagApi.Controllers
             _agent = agent;
         }
 
-        [HttpPost("ask")]
+        [HttpPost("ask-duel-question")]
         public async Task<IActionResult> Ask([FromBody] AgentRequest request, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(request.Question))
@@ -23,9 +23,7 @@ namespace LocalRagApi.Controllers
 
             try
             {
-                var answer = await _agent.AskAsync(
-                    request.Question,
-                    cancellationToken);
+                var answer = await _agent.AskAsync(request.Question, cancellationToken);
 
                 return Ok(new
                 {

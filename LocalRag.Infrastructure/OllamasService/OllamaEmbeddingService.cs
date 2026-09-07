@@ -1,33 +1,56 @@
-﻿
+﻿using LocalRag.Application.Interfaces;
+using ProcurementAiApi.LocalRAG.Application.DTOs;
 using ProcurementAiApi.LocalRAG.Application.Interfaces;
 using System.Net.Http.Json;
 
-namespace ProcurementAiApi.LocalRAG.Infrastructure.OllamasService
+namespace LocalRag.Infrastructure.OllamasService;
+
+public sealed class OllamaEmbeddingService : IEmbeddingService
 {
-    public class OllamaEmbeddingService : IEmbeddingService
+    private readonly HttpClient _httpClient;
+
+    public OllamaEmbeddingService(HttpClient httpClient)
     {
-        private readonly HttpClient _httpClient;
+        _httpClient = httpClient;
+    }
 
-        public OllamaEmbeddingService(HttpClient httpClient)
+    public async Task<float[]> GenerateEmbeddingAsync(
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            throw new ArgumentException(
+                "Text cannot be empty.",
+                nameof(text));
+
+        var request = new
         {
-            _httpClient = httpClient;
+            model = "nomic-embed-text",
+            input = text
+        };
+
+        using var response = await _httpClient.PostAsJsonAsync(
+            "/api/embed",
+            request,
+            cancellationToken);
+
+        var result =
+            await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>(
+                cancellationToken: cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Ollama embedding request failed: {(int)response.StatusCode}");
         }
 
-        public async Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default)
+        if (result?.Embeddings is null ||
+            result.Embeddings.Count == 0)
         {
-            var request = new
-            {
-                model = "nomic-embed-text",
-                input = text
-            };
-
-            var response = await _httpClient.PostAsJsonAsync("/api/embed", request, cancellationToken);
-
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<Application.DTOs.OllamaEmbeddingResponse>(cancellationToken: cancellationToken);
-
-            return result!.Embeddings[0];
+            throw new InvalidOperationException(
+                "Ollama returned no embedding.");
         }
+
+        return result.Embeddings[0];
     }
 }

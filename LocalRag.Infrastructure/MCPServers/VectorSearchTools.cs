@@ -3,39 +3,49 @@ using ModelContextProtocol.Server;
 using ProcurementAiApi.LocalRAG.Application.Interfaces;
 using System.ComponentModel;
 
-namespace LocalRag.Infrastructure.MCPServers
+namespace LocalRag.Infrastructure.MCPServers;
+
+[McpServerToolType]
+public sealed class VectorSearchTools
 {
-    [McpServerToolType]
-    public class VectorSearchTools
+    private readonly IEmbeddingService _embedding;
+    private readonly IVectorRepository _repository;
+
+    public VectorSearchTools(
+        IEmbeddingService embedding,
+        IVectorRepository repository)
     {
-        private readonly IEmbeddingService _embedding;
-        private readonly IVectorRepository _repository;
+        _embedding = embedding;
+        _repository = repository;
+    }
 
-        public VectorSearchTools(
-            IEmbeddingService embedding,
-            IVectorRepository repository)
-        {
-            _embedding = embedding;
-            _repository = repository;
-        }
+    [McpServerTool]
+    [Description("Search company ERP documents using semantic similarity.")]
+    public async Task<string> SearchDocuments(
+        string question,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(question))
+            throw new ArgumentException(
+                "Question cannot be empty.",
+                nameof(question));
 
-        [McpServerTool]
-        [Description("Search company ERP documents using semantic similarity.")]
-        public async Task<string> SearchDocuments(string question)
-        {
-            if (string.IsNullOrWhiteSpace(question))
-                throw new ArgumentException("Question cannot be empty.");
+        var vector =
+            await _embedding.GenerateEmbeddingAsync(
+                question,
+                cancellationToken);
 
-            var vector = await _embedding.GenerateEmbeddingAsync(question);
+        var documents =
+            await _repository.SearchAsync(vector, 5);
 
-            var documents = await _repository.SearchAsync(vector, 5);
+        if (documents is null || documents.Count == 0)
+            return "No relevant documents found.";
 
-            if (documents.Count == 0)
-                return "No relevant documents found.";
-
-            return string.Join("\n\n---\n\n", documents.Select(x =>
-                    $"Title: {x.Title}\nContent: {x.Content}\nDistance: {x.Distance}")
-            );
-        }
+        return string.Join(
+            "\n\n---\n\n",
+            documents.Select(x =>
+                $"Title: {x.Title}\n" +
+                $"Content: {x.Content}\n" +
+                $"Distance: {x.Distance}"));
     }
 }

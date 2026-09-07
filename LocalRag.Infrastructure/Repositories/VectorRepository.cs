@@ -35,8 +35,7 @@ namespace LocalRag.Infrastructure.Repositories
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        public async Task<IReadOnlyList<DocumentChunk>> SearchAsync(float[] embedding, int limit = 5,
-        CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<DocumentChunk>> SearchAsync(float[] embedding, int limit = 5,  CancellationToken cancellationToken = default)
         {
             if (embedding is null || embedding.Length == 0)
             {
